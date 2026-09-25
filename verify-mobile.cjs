@@ -1,0 +1,31 @@
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
+const assert=require('node:assert/strict');
+const base='http://127.0.0.1:3080';
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+(async()=>{
+  const b=await chromium.launch({channel:'msedge',headless:true});
+  const p=await b.newPage({viewport:{width:390,height:844},isMobile:true});
+  const errors=[];p.on('pageerror',e=>errors.push(e.message));
+  const create=async lang=>(await(await fetch(base+'/api/sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({route:'A',lang})})).json()).session;
+  const s=await create('ko');
+  await p.goto(base+'/mobile.html#'+s.id);await p.locator('#board').click();
+  await p.locator('#demo-play').waitFor();
+  const audio=await p.locator('#audio').boundingBox(),info=await p.locator('.prepare').boundingBox();
+  assert.ok(audio.y-info.y-info.height<25,'Audio action must stay next to travel guidance');
+  assert.ok(audio.y+audio.height<750,'Audio action should be visible without a large blank space');
+  await p.screenshot({path:'artifacts/mobile-moving-updated.png',fullPage:true});
+  await p.locator('#demo-play').click();await p.waitForFunction(()=>document.querySelector('.big-count')?.textContent.includes('3'),{},{timeout:12000});
+  await p.locator('#demo-play').click();await wait(8500);
+  assert.match(await p.locator('.big-count').innerText(),/3/);
+  const version=await p.evaluate(()=>state.session.version);
+  await p.evaluate(()=>updateSession({...state.session,version:state.session.version-1,stop:0}));
+  assert.equal(await p.evaluate(()=>state.session.version),version,'Ignore stale polling responses');
+  await p.locator('#demo-play').click();await p.locator('.alert-card').waitFor({timeout:22000});
+  await p.screenshot({path:'artifacts/mobile-alert-updated.png',fullPage:true});
+  await p.locator('#finish').waitFor({timeout:12000});await p.locator('#finish').click();
+  await p.locator('.empty-state').waitFor();assert.equal(await p.locator('#demo-play').count(),0);
+  const en=await create('en');await p.goto(base+'/mobile.html#'+en.id);await p.locator('#board').click();
+  assert.match(await p.locator('#demo-play').innerText(),/Play demo/);
+  for(const width of [320,390,768]){await p.setViewportSize({width,height:844});assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));}
+  assert.deepEqual(errors,[]);await b.close();console.log('PASS: mobile-only play → pause → resume → alert → arrival → finish; stale response guard; audio placement; English controls and responsive widths.');
+})().catch(e=>{console.error(e);process.exit(1)});

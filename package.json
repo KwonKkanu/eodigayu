@@ -1,0 +1,1 @@
+{"name":"bus-companion-demo","version":"1.0.0","private":true,"description":"Kiosk to mobile bus guidance presentation prototype","scripts":{"start":"node server.cjs","test":"node verify.cjs"},"dependencies":{"qrcode":"1.5.4"}}
